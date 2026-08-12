@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Pontoon demo</title>
+<style>
+    :root {
+        color-scheme: light dark;
+        --ink: #1c1c1e;
+        --muted: #6c6c70;
+        --surface: #ffffff;
+        --ground: #f2f2f7;
+        --line: #d9d9de;
+        --accent: #d2601a;
+    }
+    @media (prefers-color-scheme: dark) {
+        :root {
+            --ink: #f2f2f7;
+            --muted: #9b9ba1;
+            --surface: #1c1c1e;
+            --ground: #000000;
+            --line: #38383c;
+            --accent: #ff8c42;
+        }
+    }
+    * { box-sizing: border-box; }
+    body {
+        margin: 0;
+        padding: 16px;
+        background: var(--ground);
+        color: var(--ink);
+        font: 15px/1.45 -apple-system, system-ui, sans-serif;
+    }
+    h1 {
+        margin: 0 0 2px;
+        font-size: 17px;
+        letter-spacing: -0.01em;
+    }
+    p.lede {
+        margin: 0 0 16px;
+        color: var(--muted);
+        font-size: 13px;
+    }
+    section {
+        background: var(--surface);
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        padding: 12px;
+        margin-bottom: 12px;
+    }
+    h2 {
+        margin: 0 0 10px;
+        font-size: 12px;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: var(--muted);
+    }
+    .row { display: flex; flex-wrap: wrap; gap: 8px; }
+    button {
+        flex: 1 1 auto;
+        min-width: 120px;
+        padding: 9px 12px;
+        font: inherit;
+        font-size: 13px;
+        font-weight: 500;
+        color: var(--ink);
+        background: var(--ground);
+        border: 1px solid var(--line);
+        border-radius: 9px;
+        cursor: pointer;
+    }
+    button:active { background: var(--line); }
+    input {
+        flex: 2 1 160px;
+        padding: 9px 12px;
+        font: inherit;
+        font-size: 13px;
+        color: var(--ink);
+        background: var(--ground);
+        border: 1px solid var(--line);
+        border-radius: 9px;
+    }
+    pre {
+        margin: 10px 0 0;
+        padding: 10px;
+        max-height: 132px;
+        overflow: auto;
+        background: var(--ground);
+        border-radius: 9px;
+        font: 12px/1.5 ui-monospace, SFMono-Regular, monospace;
+        white-space: pre-wrap;
+        word-break: break-word;
+    }
+    .from-native { color: var(--accent); }
+</style>
+</head>
+<body>
+
+<h1>Pontoon demo</h1>
+<p class="lede">This page talks to Swift, and Swift talks back.</p>
+
+<section>
+    <h2>Call native functions</h2>
+    <div class="row">
+        <button onclick="deviceInfo()">getDeviceInfo</button>
+        <button onclick="alertFromPage()">showAlert</button>
+        <button onclick="haptic()">haptic</button>
+        <button onclick="purchase()">purchase (rejects)</button>
+    </div>
+    <div class="row" style="margin-top: 8px;">
+        <input id="note" placeholder="Note text" value="Written from JS">
+        <button onclick="saveNote()">saveNote</button>
+    </div>
+</section>
+
+<section>
+    <h2>Page log</h2>
+    <pre id="log">ready</pre>
+</section>
+
+<script>
+    let clicks = 0;
+
+    function log(message, fromNative) {
+        const element = document.getElementById('log');
+        const line = document.createElement('div');
+        line.textContent = message;
+        if (fromNative) { line.className = 'from-native'; }
+        element.prepend(line);
+    }
+
+    async function guarded(label, work) {
+        clicks += 1;
+        try {
+            const result = await work();
+            log(label + ' → ' + JSON.stringify(result));
+        } catch (error) {
+            if (error && error.name === 'PontoonBridgeError') {
+                log(label + ' ✕ bridge error [' + error.code + '] ' + error.message);
+            } else {
+                log(label + ' ✕ rejected ' + JSON.stringify(error));
+            }
+        }
+    }
+
+    const deviceInfo = () => guarded('getDeviceInfo', () => window.pontoon.getDeviceInfo());
+    const haptic = () => guarded('haptic', () => window.pontoon.haptic());
+
+    const alertFromPage = () => guarded('showAlert', () => window.pontoon.showAlert({
+        title: 'Hello from JavaScript',
+        message: 'This alert was requested by page code through Pontoon.'
+    }));
+
+    const saveNote = () => guarded('saveNote', () => window.pontoon.saveNote({
+        text: document.getElementById('note').value
+    }));
+
+    const purchase = () => guarded('purchase', () => window.pontoon.purchase({
+        productId: 'pro.monthly',
+        price: 9.99
+    }));
+
+    window.pontoon.onNativeMessage = async function (message) {
+        log('onNativeMessage ← ' + message.text + ' (' + message.sentAt + ')', true);
+    };
+
+    window.pontoon.getPageState = async function () {
+        return { clicks: clicks, draft: document.getElementById('note').value };
+    };
+
+    window.pontoon.alwaysFails = async function () {
+        const error = new Error('the page refused this one');
+        error.name = 'DemoPageError';
+        throw error;
+    };
+
+    log('bridge ready', true);
+    deviceInfo();
+    window.pontoon.pageReady();
+</script>
+
+</body>
+</html>
